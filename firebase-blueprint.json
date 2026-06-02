@@ -1,0 +1,145 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and economic data",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "bio": { "type": "string" },
+        "gender": { "type": "string", "enum": ["male", "female", "other"] },
+        "country": { "type": "string" },
+        "level": { "type": "integer" },
+        "experience": { "type": "integer" },
+        "coins": { "type": "integer" },
+        "diamonds": { "type": "integer" },
+        "badges": { "type": "array", "items": { "type": "string" } },
+        "followersCount": { "type": "integer" },
+        "followingCount": { "type": "integer" },
+        "visitorsCount": { "type": "integer" },
+        "isVIP": { "type": "boolean" },
+        "agencyId": { "type": "string" },
+        "lastLogin": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "coins", "diamonds", "level"]
+    },
+    "Room": {
+      "title": "Room",
+      "description": "Voice chat room data",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "hostId": { "type": "string" },
+        "coHostIds": { "type": "array", "items": { "type": "string" } },
+        "memberCount": { "type": "integer" },
+        "category": { "type": "string" },
+        "backgroundTheme": { "type": "string" },
+        "isLive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "hostId"]
+    },
+    "RoomMember": {
+      "title": "Room Member",
+      "description": "Member state within a room",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "role": { "type": "string", "enum": ["host", "co-host", "audience"] },
+        "isMuted": { "type": "boolean" },
+        "joinedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "role"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Chat message data",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "type": { "type": "string", "enum": ["text", "gift", "system"] }
+      },
+      "required": ["senderId", "text", "timestamp"]
+    },
+    "Gift": {
+      "title": "Gift",
+      "description": "Virtual gift metadata",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "coinCost": { "type": "integer" },
+        "diamondValue": { "type": "integer" },
+        "animationUrl": { "type": "string" },
+        "iconUrl": { "type": "string" }
+      },
+      "required": ["id", "name", "coinCost"]
+    },
+    "Agency": {
+      "title": "Agency",
+      "description": "User agency data",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "memberCount": { "type": "integer" },
+        "totalEarnings": { "type": "integer" }
+      },
+      "required": ["id", "name", "ownerId"]
+    },
+    "Follow": {
+      "title": "Follow",
+      "description": "User follow relationship",
+      "type": "object",
+      "properties": {
+        "followerId": { "type": "string" },
+        "targetId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["followerId", "targetId", "timestamp"]
+    },
+    "Visitor": {
+      "title": "Visitor",
+      "description": "User profile visitor log record",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "visitedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "visitedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": { "schema": "User", "description": "User profiles" },
+    "/users/{userId}/visitors/{visitorId}": { "schema": "Visitor", "description": "Profile visitors log" },
+    "/rooms/{roomId}": { "schema": "Room", "description": "Voice rooms" },
+    "/rooms/{roomId}/members/{memberId}": { "schema": "RoomMember", "description": "Members in a room" },
+    "/rooms/{roomId}/hand_raises/{userId}": { "schema": "object", "description": "Hand raise requests to speak" },
+    "/rooms/{roomId}/streams/{speakerId}": { "schema": "object", "description": "Audio streams for active speakers" },
+    "/rooms/{roomId}/streams/{speakerId}/subscribers/{subscriberId}": { "schema": "object", "description": "RTC signaling subscriber records" },
+    "/rooms/{roomId}/messages/{messageId}": { "schema": "Message", "description": "Room messages" },
+    "/gifts/{giftId}": { "schema": "Gift", "description": "Gift definitions" },
+    "/agencies/{agencyId}": { "schema": "Agency", "description": "Agencies" },
+    "/private_chats/{chatId}/messages/{messageId}": { "schema": "Message", "description": "Private messages" },
+    "/follows/{followId}": { "schema": "Follow", "description": "User follow relationships" },
+    "/gift_logs/{logId}": { "schema": "object", "description": "Gift transactions" },
+    "/posts/{postId}": { "schema": "object", "description": "Moments posts" },
+    "/posts/{postId}/comments/{commentId}": { "schema": "object", "description": "Comments on posts" },
+    "/stories/{storyId}": { "schema": "object", "description": "Moments status/stories" },
+    "/room_events/{eventId}": { "schema": "object", "description": "Events scheduled in voice rooms" },
+    "/notifications/{notificationId}": { "schema": "object", "description": "User alert notifications" },
+    "/store_logs/{logId}": { "schema": "object", "description": "App store purchases" },
+    "/referrals/{referralId}": { "schema": "object", "description": "Referrals tracking" },
+    "/support_chats/{userId}/messages/{messageId}": { "schema": "Message", "description": "Support chat messages" }
+  }
+}

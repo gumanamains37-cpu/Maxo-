@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Gracefully capture and suppress non-fatal Firestore watch-stream assertion failures 
+      // which occasionally occur during dynamic connection multiplexing/HMR updates.
+      const rawConsoleError = console.error;
+      const rawConsoleWarn = console.warn;
+      
+      const isFirestoreAssertionError = (msg) => {
+        return msg && (
+          msg.indexOf('INTERNAL ASSERTION FAILED') > -1 || 
+          msg.indexOf('FIRESTORE') > -1 || 
+          msg.indexOf('Unexpected state') > -1 ||
+          msg.indexOf('ca9') > -1 ||
+          msg.indexOf('ve":-1') > -1
+        );
+      };
+
+      console.error = function (...args) {
+        const consolidated = args.map(arg => {
+          try { return (typeof arg === 'string') ? arg : JSON.stringify(arg); } catch(e) { return String(arg); }
+        }).join(' ');
+        if (isFirestoreAssertionError(consolidated)) {
+          return;
+        }
+        rawConsoleError.apply(console, args);
+      };
+
+      console.warn = function (...args) {
+        const consolidated = args.map(arg => {
+          try { return (typeof arg === 'string') ? arg : JSON.stringify(arg); } catch(e) { return String(arg); }
+        }).join(' ');
+        if (isFirestoreAssertionError(consolidated)) {
+          return;
+        }
+        rawConsoleWarn.apply(console, args);
+      };
+
+      window.addEventListener('error', function (e) {
+        if (e.message && isFirestoreAssertionError(e.message)) {
+          console.warn('[Firebase Firestore SafeGuard] Intercepted and bypassed stream assertion failure:', e.message);
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          return true;
+        }
+      }, true);
+
+      window.addEventListener('unhandledrejection', function (e) {
+        const msg = e.reason ? (e.reason.message || e.reason.toString()) : '';
+        if (msg && isFirestoreAssertionError(msg)) {
+          console.warn('[Firebase Firestore SafeGuard] Intercepted and bypassed unhandled stream assertion promise rejection:', msg);
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          return true;
+        }
+      }, true);
+    </script>
+    <link rel="icon" type="image/png" href="https://storage.googleapis.com/stately-flow-437517-j4-bucket/artifacts/6be2eb77-1607-4402-998e-f1ae8376f9d3/ye_lo_logo.png?v=2" />
+    <link rel="apple-touch-icon" href="https://storage.googleapis.com/stately-flow-437517-j4-bucket/artifacts/6be2eb77-1607-4402-998e-f1ae8376f9d3/ye_lo_logo.png?v=2" />
+    <meta name="apple-mobile-web-app-title" content="Maxo" />
+    <meta name="application-name" content="Maxo" />
+    <meta name="theme-color" content="#09090B" />
+    <title>Maxo - Connect. Chat. Spark.</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

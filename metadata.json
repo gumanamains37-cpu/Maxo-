@@ -1,0 +1,11 @@
+{
+  "name": "Remix: Maxo",
+  "description": "Maxo - Premium voice chat and social party rooms",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

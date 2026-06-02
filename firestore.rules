@@ -1,0 +1,440 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net - Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Global Helper Functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-+:]+$');
+    }
+
+    function isAdmin() {
+      return isSignedIn() && 
+        request.auth.token.email == 's30669983@gmail.com' && 
+        request.auth.token.email_verified == true;
+    }
+
+    function isGuest(id) {
+      return id is string && id.matches('^guest_.*');
+    }
+
+    function isMobile(id) {
+      return id is string && id.matches('^mobile_.*');
+    }
+
+    function isPassUser(id) {
+      return id is string && id.matches('^pass_user_.*');
+    }
+
+    function isNonSignedInUser(id) {
+      return id is string && (id.matches('^guest_.*') || id.matches('^mobile_.*') || id.matches('^pass_user_.*') || id.matches('^[0-9]+$'));
+    }
+
+    function isSeedUserId(id) {
+      return id == 'siddharth_royal' || id == 'anya_star' || id == 'zara_beats' || id == 'kabir_vocals' || id == 'mia_chat';
+    }
+
+    function isSeedRoomId(id) {
+      return id == 'room_star_mic' || id == 'room_gaming_arena' || id == 'room_cozy_chat' || id == 'room_summer_solstice' || id == 'room_astrology';
+    }
+
+    // 3. Entity Validation Helpers
+    function isValidUser(data) {
+      return data.uid is string 
+        && data.displayName is string 
+        && data.displayName.size() >= 1 
+        && data.displayName.size() <= 100
+        && (data.coins is int || data.coins is float) 
+        && data.coins >= 0
+        && (data.diamonds is int || data.diamonds is float) 
+        && data.diamonds >= 0
+        && (data.level is int || data.level is float) 
+        && data.level >= 0;
+    }
+
+    function isStandardInitialUser(data) {
+      return data.get('coins', 0) <= 1500
+        && data.get('diamonds', 0) <= 10
+        && data.get('level', 1) <= 1
+        && data.get('isVIP', false) == false
+        && data.get('experience', 0) <= 0
+        && data.get('followersCount', 5) <= 5
+        && data.get('followingCount', 3) <= 3
+        && data.get('visitorsCount', 17) <= 17
+        && data.get('faceVerified', false) == false
+        && data.get('identityVerified', false) == false
+        && data.get('isHostApproved', false) == false;
+    }
+
+    function isEconomicLockActive(existingData, incomingData) {
+      return incomingData.get('faceVerified', false) == existingData.get('faceVerified', false)
+        && incomingData.get('identityVerified', false) == existingData.get('identityVerified', false)
+        && incomingData.get('isHostApproved', false) == existingData.get('isHostApproved', false);
+    }
+
+    function isSocialInfluenceUpdate(existingData, incomingData) {
+      return incomingData.get('uid', '') == existingData.get('uid', '')
+        && incomingData.get('displayName', '') == existingData.get('displayName', '')
+        && incomingData.get('coins', 0) == existingData.get('coins', 0)
+        && incomingData.get('level', 1) == existingData.get('level', 1)
+        && incomingData.get('isVIP', false) == existingData.get('isVIP', false)
+        && incomingData.get('experience', 0) == existingData.get('experience', 0)
+        && incomingData.get('followingCount', 0) == existingData.get('followingCount', 0)
+        && incomingData.get('faceVerified', false) == existingData.get('faceVerified', false)
+        && incomingData.get('identityVerified', false) == existingData.get('identityVerified', false)
+        && incomingData.get('isHostApproved', false) == existingData.get('isHostApproved', false)
+        && incomingData.get('agencyId', '') == existingData.get('agencyId', '');
+    }
+
+    function isRoomOwnerLock(existingData, incomingData) {
+      return incomingData.get('hostId', '') == existingData.get('hostId', '');
+    }
+
+    function isValidRoom(data) {
+      return data.id is string 
+        && data.title is string 
+        && data.title.size() >= 1 
+        && data.title.size() <= 200
+        && data.hostId is string;
+    }
+
+    function isValidRoomMember(data) {
+      return data.uid is string 
+        && data.role is string 
+        && (data.role == 'host' || data.role == 'co-host' || data.role == 'audience');
+    }
+
+    function isValidMessage(data) {
+      return data.text is string 
+        && data.text.size() <= 5000;
+    }
+
+    function isValidFollow(data) {
+      return data.targetId is string;
+    }
+
+    function isValidVisitor(data) {
+      return data.uid is string 
+        && data.displayName is string 
+        && data.displayName.size() >= 1 
+        && data.displayName.size() <= 100
+        && data.visitedAt is string
+        && (!('photoURL' in data) || data.photoURL is string);
+    }
+
+    // 4. Collection Target Rules
+
+    // Users Collection
+    match /users/{userId} {
+      allow read: if true; // Public user profiles are readable to enable room hosts & active users identification
+      allow create: if (
+        ((isSignedIn() && isOwner(userId) && isValidId(userId) && isValidUser(request.resource.data) && request.resource.data.uid == userId) ||
+         (isNonSignedInUser(userId) && isValidId(userId) && isValidUser(request.resource.data) && request.resource.data.uid == userId) ||
+         (isSeedUserId(userId) && isValidId(userId) && isValidUser(request.resource.data) && request.resource.data.uid == userId))
+        && (isAdmin() || isStandardInitialUser(request.resource.data) || isSeedUserId(userId))
+      );
+      allow update: if (
+        ((isSignedIn() && isOwner(userId) && isValidId(userId) && isValidUser(request.resource.data) && request.resource.data.uid == userId) ||
+         (isNonSignedInUser(userId) && isValidId(userId) && isValidUser(request.resource.data) && request.resource.data.uid == userId) ||
+         (isSeedUserId(userId) && isValidId(userId) && isValidUser(request.resource.data) && request.resource.data.uid == userId))
+        && (isAdmin() || isEconomicLockActive(resource.data, request.resource.data) || isSeedUserId(userId))
+      ) || (
+        isValidId(userId) && isValidUser(request.resource.data)
+        && isSocialInfluenceUpdate(resource.data, request.resource.data)
+      );
+      allow delete: if isAdmin();
+
+      // Visitors Subcollection
+      match /visitors/{visitorId} {
+        allow read: if true;
+        allow create, update: if isValidId(visitorId) && (
+          (isSignedIn() && request.auth.uid == visitorId) ||
+          isNonSignedInUser(visitorId) ||
+          isAdmin()
+        ) && isValidVisitor(request.resource.data);
+        allow delete: if isAdmin() || (
+          (isSignedIn() && request.auth.uid == userId) ||
+          isNonSignedInUser(userId)
+        );
+      }
+    }
+
+    // Rooms & Subcollections
+    match /rooms/{roomId} {
+      allow read: if true; // Publicly readable so everyone (including guests) can explore rooms
+      allow create: if (
+        (isSignedIn() && request.resource.data.hostId == request.auth.uid) ||
+        isNonSignedInUser(request.resource.data.hostId) ||
+        roomId.matches('^demo_room_.*') ||
+        isSeedRoomId(roomId)
+      ) && isValidId(roomId) && isValidRoom(request.resource.data);
+      allow update: if isValidId(roomId) && (
+        (isSignedIn() && resource.data.hostId == request.auth.uid) ||
+        isNonSignedInUser(resource.data.hostId) ||
+        (isSignedIn() && request.auth.uid in resource.data.coHostIds) ||
+        roomId.matches('^demo_room_.*') ||
+        isSeedRoomId(roomId) ||
+        isRoomOwnerLock(resource.data, request.resource.data) ||
+        isAdmin() ||
+        // Allow room interaction updates (joining/leaving, seats, music, gifting volume)
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'memberCount', 'seats', 'seatCount', 'giftVolume', 
+          'musicPlaying', 'musicTrackUrl', 'musicTrackName', 'musicTrackIndex', 
+          'musicStartedAt', 'musicProgressMs', 'musicSenderId'
+        ])
+      ) && isValidRoom(request.resource.data);
+      allow delete: if isValidId(roomId) && (
+        (isSignedIn() && resource.data.hostId == request.auth.uid) ||
+        isNonSignedInUser(resource.data.hostId) ||
+        roomId.matches('^demo_room_.*') ||
+        isSeedRoomId(roomId) ||
+        isAdmin()
+      );
+
+      // Members Subcollection
+      match /members/{memberId} {
+        allow read: if true;
+        allow create, update: if isValidId(memberId) && (
+          (isSignedIn() && request.auth.uid == memberId) ||
+          isNonSignedInUser(memberId) ||
+          (isSignedIn() && (request.auth.uid == get(/databases/$(database)/documents/rooms/$(roomId)).data.hostId)) ||
+          isNonSignedInUser(get(/databases/$(database)/documents/rooms/$(roomId)).data.hostId) ||
+          isAdmin()
+        ) && isValidRoomMember(request.resource.data);
+        allow delete: if isValidId(memberId) && (
+          (isSignedIn() && request.auth.uid == memberId) ||
+          isNonSignedInUser(memberId) ||
+          (isSignedIn() && (request.auth.uid == get(/databases/$(database)/documents/rooms/$(roomId)).data.hostId)) ||
+          isNonSignedInUser(get(/databases/$(database)/documents/rooms/$(roomId)).data.hostId) ||
+          isAdmin()
+        );
+      }
+
+      // Hand Raises
+      match /hand_raises/{userId} {
+        allow read: if true;
+        allow create, update, delete: if isValidId(userId) && (
+          (isSignedIn() && (request.auth.uid == userId || request.auth.uid == get(/databases/$(database)/documents/rooms/$(roomId)).data.hostId)) ||
+          isNonSignedInUser(userId) ||
+          isAdmin()
+        );
+      }
+
+      // Streams
+      match /streams/{speakerId} {
+        allow read: if true;
+        allow create, update, delete: if isValidId(speakerId) && (
+          (isSignedIn() && (request.auth.uid == speakerId || request.auth.uid == get(/databases/$(database)/documents/rooms/$(roomId)).data.hostId)) ||
+          isNonSignedInUser(speakerId) ||
+          isAdmin()
+        );
+
+        // RTC Signaling Subscribers
+        match /subscribers/{subscriberId} {
+          allow read: if true;
+          allow create, update, delete: if isValidId(subscriberId) && (
+            (isSignedIn() && (request.auth.uid == subscriberId || request.auth.uid == speakerId)) ||
+            (isNonSignedInUser(subscriberId) || isNonSignedInUser(speakerId)) ||
+            isAdmin()
+          );
+        }
+      }
+
+      // Room Messages
+      match /messages/{messageId} {
+        allow read: if true;
+        allow create: if isValidId(messageId) && (
+          (isSignedIn() && request.resource.data.senderId == request.auth.uid) ||
+          isNonSignedInUser(request.resource.data.senderId)
+        ) && isValidMessage(request.resource.data);
+        allow update, delete: if isValidId(messageId) && (
+          (isSignedIn() && (resource.data.senderId == request.auth.uid || request.auth.uid == get(/databases/$(database)/documents/rooms/$(roomId)).data.hostId)) ||
+          isNonSignedInUser(resource.data.senderId) ||
+          isAdmin()
+        );
+      }
+    }
+
+    // Gifts & Gift Logs
+    match /gifts/{giftId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /gift_logs/{logId} {
+      allow read: if true;
+      allow create: if isValidId(logId) && (
+        (isSignedIn() && request.resource.data.senderId == request.auth.uid) ||
+        (!isSignedIn() && isNonSignedInUser(request.resource.data.senderId))
+      ) && (
+        !('coinsSpent' in request.resource.data) || ((request.resource.data.coinsSpent is int || request.resource.data.coinsSpent is float) && request.resource.data.coinsSpent >= 0)
+      ) && (
+        !('price' in request.resource.data) || ((request.resource.data.price is int || request.resource.data.price is float) && request.resource.data.price >= 0)
+      );
+      allow update, delete: if false;
+    }
+
+    // Agencies
+    match /agencies/{agencyId} {
+      allow read: if true;
+      allow create: if isValidId(agencyId) && (
+        (isSignedIn() && request.resource.data.ownerId == request.auth.uid) ||
+        (!isSignedIn() && isNonSignedInUser(request.resource.data.ownerId))
+      );
+      allow update: if isValidId(agencyId) && (
+        (isSignedIn() && resource.data.ownerId == request.auth.uid) ||
+        (!isSignedIn() && isNonSignedInUser(resource.data.ownerId)) ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Private Chats
+    match /private_chats/{chatId} {
+      allow read, write: if (isSignedIn() && (chatId.matches('.*' + request.auth.uid + '.*'))) ||
+                           (!isSignedIn() && (chatId.matches('.*' + 'guest' + '.*') || chatId.matches('.*' + 'mobile' + '.*') || chatId.matches('.*' + 'pass_user' + '.*'))) ||
+                           isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if (isSignedIn() && (chatId.matches('.*' + request.auth.uid + '.*'))) ||
+                     (!isSignedIn() && (chatId.matches('.*' + 'guest' + '.*') || chatId.matches('.*' + 'mobile' + '.*') || chatId.matches('.*' + 'pass_user' + '.*'))) ||
+                     isAdmin();
+        allow create: if isValidId(messageId) && (
+          (isSignedIn() && request.resource.data.senderId == request.auth.uid) ||
+          (!isSignedIn() && isNonSignedInUser(request.resource.data.senderId))
+        ) && isValidMessage(request.resource.data);
+        allow update, delete: if (isSignedIn() && (resource.data.senderId == request.auth.uid)) ||
+                               (!isSignedIn() && isNonSignedInUser(resource.data.senderId)) ||
+                               isAdmin();
+      }
+    }
+
+    // Follows
+    match /follows/{followId} {
+      allow read: if true;
+      allow create: if isValidId(followId) && (
+        (isSignedIn() && request.resource.data.followerId == request.auth.uid) ||
+        (!isSignedIn() && isNonSignedInUser(request.resource.data.followerId))
+      ) && isValidFollow(request.resource.data);
+      allow update: if false;
+      allow delete: if isValidId(followId) && (
+        (isSignedIn() && resource.data.followerId == request.auth.uid) ||
+        (!isSignedIn() && isNonSignedInUser(resource.data.followerId)) ||
+        isAdmin()
+      );
+    }
+
+    // Moments Posts & Comments & Stories
+    match /posts/{postId} {
+      allow read: if true;
+      allow create: if isValidId(postId) && (
+        (isSignedIn() && request.resource.data.authorId == request.auth.uid) ||
+        (!isSignedIn() && isNonSignedInUser(request.resource.data.authorId))
+      );
+      allow update, delete: if isValidId(postId) && (
+        (isSignedIn() && resource.data.authorId == request.auth.uid) ||
+        (!isSignedIn() && isNonSignedInUser(resource.data.authorId)) ||
+        isAdmin()
+      );
+
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if isValidId(commentId) && (
+          (isSignedIn() && request.resource.data.authorId == request.auth.uid) ||
+          (!isSignedIn() && isNonSignedInUser(request.resource.data.authorId))
+        );
+        allow update, delete: if isValidId(commentId) && (
+          (isSignedIn() && resource.data.authorId == request.auth.uid) ||
+          (!isSignedIn() && isNonSignedInUser(resource.data.authorId)) ||
+          isAdmin()
+        );
+      }
+    }
+
+    match /stories/{storyId} {
+      allow read: if true;
+      allow create: if isValidId(storyId) && (
+        (isSignedIn() && request.resource.data.authorId == request.auth.uid) ||
+        (!isSignedIn() && isNonSignedInUser(request.resource.data.authorId))
+      );
+      allow update, delete: if isValidId(storyId) && (
+        (isSignedIn() && resource.data.authorId == request.auth.uid) ||
+        (!isSignedIn() && isNonSignedInUser(resource.data.authorId)) ||
+        isAdmin()
+      );
+    }
+
+    // Room Scheduled Events
+    match /room_events/{eventId} {
+      allow read: if true;
+      allow create: if isValidId(eventId) && (
+        (isSignedIn() && request.resource.data.creatorId == request.auth.uid) ||
+        (!isSignedIn() && isNonSignedInUser(request.resource.data.creatorId))
+      );
+      allow update, delete: if isValidId(eventId) && (
+        (isSignedIn() && resource.data.creatorId == request.auth.uid) ||
+        (!isSignedIn() && isNonSignedInUser(resource.data.creatorId)) ||
+        isAdmin()
+      );
+    }
+
+    // System Alert Notifications
+    match /notifications/{notificationId} {
+      allow read: if true;
+      allow create: if isValidId(notificationId);
+      allow update, delete: if isValidId(notificationId) && (
+        (isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin())) ||
+        (!isSignedIn() && isNonSignedInUser(resource.data.userId))
+      );
+    }
+
+    // App Store Purchases
+    match /store_logs/{logId} {
+      allow read: if true;
+      allow create: if isValidId(logId) && (
+        (isSignedIn() && request.resource.data.userId == request.auth.uid) ||
+        (!isSignedIn() && isNonSignedInUser(request.resource.data.userId))
+      );
+      allow update, delete: if false;
+    }
+
+    // Referrals Tracking
+    match /referrals/{referralId} {
+      allow read: if true;
+      allow create: if isValidId(referralId) && (
+        (isSignedIn() && (request.resource.data.referrerId == request.auth.uid || request.resource.data.referredId == request.auth.uid)) ||
+        (!isSignedIn() && (isNonSignedInUser(request.resource.data.referrerId) || isNonSignedInUser(request.resource.data.referredId)))
+      );
+      allow update, delete: if isAdmin();
+    }
+
+    // Support Chats
+    match /support_chats/{userId} {
+      allow read, write: if (isSignedIn() && userId == request.auth.uid) ||
+                           (!isSignedIn() && isNonSignedInUser(userId)) ||
+                           isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if (isSignedIn() && userId == request.auth.uid) ||
+                     (!isSignedIn() && isNonSignedInUser(userId)) ||
+                     isAdmin();
+        allow create: if isValidId(messageId) && (
+          (isSignedIn() && request.resource.data.senderId == request.auth.uid) ||
+          (!isSignedIn() && isNonSignedInUser(request.resource.data.senderId))
+        ) && isValidMessage(request.resource.data);
+        allow update, delete: if isAdmin();
+      }
+    }
+  }
+}
